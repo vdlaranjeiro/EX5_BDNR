@@ -20,103 +20,66 @@ def create_produto(driver):
             validacaoQuantidade = 1
         else:
             print('Insira um valor válido')
-    
-    verificacaoVendedor = 0
-    while(verificacaoVendedor != 1):
-        cpfOuCnpj = input('\nDigite o cpf ou cnpj do vendedor: ')
-        with driver.session() as session:
-            query = "MATCH (v:Vendedor) WHERE v.documento = $documento RETURN v"
-            vendedor = session.run(query, {"documento": cpfOuCnpj})
-            
-        if(vendedor):
-            verificacaoVendedor = 1
-        else:
-            print('Não foram encontrados vendedores com essas informações')
-
 
     with driver.session() as session:
         produto = {
             "nome": nome,
-            "descrição": descricao,
+            "descricao": descricao,
             "valor": valor,
             "quantidade": quantidade
         }
+        vendedor = {"documento": input('\nDigite o cpf ou cnpj do vendedor: ')}
+        params = {**produto, **vendedor}
 
-        query = "CREATE p:Produto {}"
-    print(f'\nProduto cadastrado!')
-
+        query = (
+            "MATCH (v:Vendedor {documento: $documento}) "
+            "CREATE (p:Produto {nome: $nome, descricao: $descricao, valor: $valor, quantidade: $quantidade})"
+            "MERGE (p)-[:VENDIDO_POR]->(v)"
+            )
+        
+        try:
+            result = session.run(query, params)
+            summary = result.consume()
+            if summary.counters.nodes_created == 0 and summary.counters.relationships_created == 0:
+                raise Exception(f"Não foram encontrados vendedores com o documento especificado.")
+            else:
+                print("Produto cadastrado!")
+        except Exception as e:
+            print(f"Ocorreu um erro durante o cadastro do produto: {e}")
     return
 
+def read_produto(driver):
+    read_all_produto(driver)
 
-    idProduto = int(input('\nDigite o código do produto que deseja excluir: '))
-
-    myquery = {"_id": idProduto}
-    mycol = db.Produtos
-
-    mydoc = mycol.delete_one(myquery)
-    print(f'Deletando o produto {mydoc}')
-    return
-
-def read_produto(db):
     idProduto = int(input('\nDigite o código do produto que deseja encontrar: '))
 
-    myquery = {"_id": idProduto}
-    mycol = db.Produtos
+    with driver.session() as session:
+        query = "MATCH (p:Produto) WHERE id(p) = $idProduto RETURN p"
+        produtos = session.run(query, {"idProduto": idProduto})
 
-    mydoc = mycol.find_one(myquery)
-
-    if not (mydoc):
-        print('Não foram encontrados produtos com esse código.')
-    else:
-        print("\nInformações do produto:")
-        print(f'Código: {mydoc["_id"]}')
-        print(f'Nome: {mydoc["nome"]}')
-        print(f'Descrição: {mydoc["descricao"]}')
-        print(f'Valor: {mydoc["valor"]}')
-        print(f'Quantidade disponível: {mydoc["quantidade"]}')
+        if produtos.peek() is None:
+            print('Código de produto inválido.')
+        else:
+            produto = produtos.single()["p"]
+            print("\nInformações do produto:")
+            print(f'Nome: {produto["nome"]}')
+            print(f'Descrição: {produto["descricao"]}')
+            print(f'Valor: {produto["valor"]}')
+            print(f'Quantidade disponível: {produto["quantidade"]}')
     
     return
 
-    idProduto = int(input('\nDigite o código do produto que deseja atualizar: '))
+def read_all_produto(driver):
+    with driver.session() as session:
+        query = "MATCH (p:Produto) RETURN p.nome as nome, id(p) as NodeID"
+        produtos = session.run(query)
 
-    myquery = {"_id": idProduto}
-    mycol = db.Produtos
-
-    mydoc = mycol.find_one(myquery)
-
-    if not(mydoc):
-        print('Não foram encontrados produtos com esse código')
-    else:
-        print(f'Editando informações do produto {mydoc["_id"]} - {mydoc["nome"]}. Aperte ENTER para pular um campo')
-        nome = input('Nome: ')
-        if len(nome):
-            mydoc["nome"] = nome
-        
-        descricao = input('Descrição: ')
-        if len(descricao):
-            mydoc["descricao"] = descricao
-        
-        valor = input('Valor: ')
-        if len(valor):
-            validacaoValor = 0
-            while(validacaoValor != 1):
-                try:
-                    mydoc["valor"] = float(valor)
-                    validacaoValor = 1
-                except ValueError:
-                    valor = input('Insira um valor válido: ')
-        quantidade = input('Quantidade: ')
-        if len(quantidade):
-            validacaoQuantidade = 0
-            while(validacaoQuantidade != 1):
-                if(quantidade.isnumeric()):
-                    mydoc["quantidade"] = int(quantidade)
-                    validacaoQuantidade = 1
-                else:
-                    quantidade = input('Insira uma quantidade válida: ')
-
-        novasInformacoes = {"$set": mydoc}
-        mycol.update_one(myquery, novasInformacoes)
-        print('\nInformações atualizadas com sucesso!')
+        if produtos.peek() is None:
+            print("Não há produtos cadastrados")
+        else:
+            print("\nProdutos:")
+            for produto in produtos:
+                print(f"\nCódigo: {produto['NodeID']}")
+                print(f"Nome: {produto['nome']}")
 
     return
